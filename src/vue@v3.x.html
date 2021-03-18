@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <link
+      crossorigin="anonymous"
+      href="https://cdn.bootcss.com/normalize/8.0.1/normalize.min.css"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        font-family: arial, tahoma, 宋体;
+      }
+      pre {
+        background-color: #dfdfdf;
+      }
+
+      /* vue3 过度样式 */
+      .fade-enter-active,
+      .fade-leave-active {
+        transition: opacity 0.5s ease;
+      }
+
+      .fade-enter-from,
+      .fade-leave-to {
+        opacity: 0;
+      }
+    </style>
+    <title>title Name</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script src="https://unpkg.com/vue@next"></script>
+    <script src="https://unpkg.com/vue-router@next"></script>
+    <script src="https://unpkg.com/vuex@next"></script>
+    <script>
+      // 对于TypeScript类型推断，请使用新的defineComponent, defineAsyncComponent 全局API
+      const {
+        createApp,
+        mount,
+        defineComponent,
+        defineAsyncComponent,
+        nextTick,
+        // 响应式
+        reactive,
+        computed,
+        ref, // 监听一个值
+        shallowRef,
+        toRef, // 监听一个对象中某个值
+        toRefs, // 监听对象中的所有值
+        isRef,
+        triggerRef,
+        watch,
+        watchEffect,
+        // life syclie ----
+        onMounted,
+        onBeforeUnmount,
+        onUnmounted,
+        // provide / inject
+        provide,
+        inject,
+        // render ---
+        h,
+      } = Vue;
+      const { createStore, createLogger, useStore } = Vuex;
+      const {
+        createRouter,
+        createWebHashHistory,
+        createWebHistory,
+        useRouter,
+        useRoute,
+      } = VueRouter;
+
+      // 异步组件
+      const asyncComponent = defineAsyncComponent({
+        loader: () => {
+          return new Promise((resolve) => {
+            resolve({
+              template: `<button v-bg="'yellow'" @click="textClick">asyncComponent {{isShow}} Click This</button>`,
+              props: {
+                isShow: {
+                  type: Boolean,
+                  required: false,
+                  default(props) {
+                    //inject: provide 进入的值, 默认值
+                    return inject("canShow", true);
+                  },
+                },
+              },
+              emits: {
+                click: false,
+                textClick: true,
+              }, // 注册自定义事件,
+              methods: {
+                textClick(event) {
+                  setTimeout(() => {
+                    this.$emit("textClick", event);
+                  }, 2000);
+                },
+              },
+            });
+          });
+        },
+      });
+
+      // 同步组件, 这个函数组件名称是函数名称, 这个函数也是被定义为 setup 函数, 不加 defineComponent 也可以
+      const syncComponent = defineComponent(function syncComponent(
+        props,
+        { attrs, emit, expose, slots }
+      ) {
+        const store = useStore();
+        console.log(store);
+        const getTime = () => new Date().getTime();
+        // 函数组件中定义data 深层， shallow 浅
+        const data = toRefs(
+          reactive({
+            time: getTime(),
+          })
+        );
+        const data2 = reactive({ nums: 2 });
+        // 只把自己的值变为响应式的
+        const shallowNums = shallowRef({ nums: 3 });
+        shallowNums.value.nums = 4;
+        triggerRef(shallowNums); // 手动触发 shallowRef 到 watchEffect
+        const textTime = computed(() => new Date(data.time.value));
+
+        // 侦听多个
+        watch(
+          [() => data2.num, data.time],
+          ([val, oldVal], [val1, oldVal1]) => {
+            console.log(val, oldVal, val1, oldVal1);
+          }
+        );
+        // watchEffect 类似于 react中的 useEffect
+        const stop = watchEffect(
+          (clearEffect) => {
+            clearEffect(() => {});
+          },
+          {
+            onTrack() {
+              // 将在响应式 property 或 ref 作为依赖项被追踪时被调用。
+            },
+            onTrigger() {
+              // 将在依赖项变更导致副作用被触发时被调用
+            },
+          }
+        );
+        // stop(); 可手动停止，在 setup中会自动随生命周期停止
+
+        nextTick(() => {
+          // const router = useRouter();
+          // const route = useRouter();
+          console.log(document.querySelector("#app"));
+        });
+        onMounted(() => {
+          setTimeout(() => {
+            data.time.value = getTime();
+          }, 2000);
+          // attr 包含 style，class，移除了 $listener 改进了 emit
+          // console.log(attrs, emit);
+        });
+        onBeforeUnmount(() => {
+          console.log("before destroy");
+        });
+        onUnmounted(() => {
+          console.log("destroyed");
+        });
+        return () =>
+          h("span", {}, [`syncComponent ${textTime.value}`, slots.default()]);
+      });
+
+      const CustomInput = {
+        template: /*html*/ `
+        result: <input type="text" :value="result" @input="resultInput"/>
+        keyword: <input type="text" :value="keyword" @input="keywordInput"/>
+        `,
+        props: {
+          result: String,
+          resultModifiers: Object, // result 的修饰符 生成的 prop 名称将为 arg + "Modifiers"
+          keyword: String,
+        },
+        emits: ["update:result", "update:keyword"],
+        created() {
+          // console.log(this.resultModifiers);
+        },
+        methods: {
+          resultInput(event) {
+            this.$emit("update:result", event.target.value);
+          },
+          keywordInput(event) {
+            this.$emit("update:keyword", event.target.value);
+          },
+        },
+      };
+
+      const RouterEleHome = {
+        template: `<div>RouterEle Home</div>`,
+        created() {
+          console.log(this.$route);
+        },
+      };
+      const RouterEleAbout = { template: `<div>RouterEle About</div>` };
+      const App = {
+        // v3.x 中的template可以有多个节点，这和 angular 类似
+        template: /*html*/ `
+        <span>hello vue3 {{title}}</span>
+            <h2>"传送"组件 teleport</h2>
+                <!-- 文档： https://v3.cn.vuejs.org/api/built-in-components.html#teleport -->
+                <!-- to 参数 css 选择器 -->
+            <teleport to="body" :disabled="true">
+             <span>vue 3 牛逼</span>
+            </teleport>
+            <h2>同异步组件 </h2>
+            <syncComponent v-if="show" >
+              default slot
+            </syncComponent>
+            <br/>
+            <asyncComponent @text-click="getEvent" @click="getEvent" />
+            <h2>标签属性is 改为 {{'<components is /> 或 <div v-is/>'}} 更好支持 web components API</h2>
+            <h2>storeArr: Watch 数组 {{storeArr}}</h2>
+            <h2>自定义元素保持编译 <key-div /></h2>
+
+            <h2>模版指令</h2>
+            <div>
+              v-for 自动生成key,template标签上写key:  <!-- 3.x 的v-if比v-for 权重高, 同时出现时 v-for 出的值v-if访问不到,故不渲染 -->
+              <template
+              v-for="(value, name, index) in {name: 'dawei', age: 4}"
+              v-if="!getEvent(name)">
+              <span :ref="setRefsList">{{ index }}. {{ name }}: {{ value }}</span>
+              </template>
+            </div>
+            <div v-bind="{id: 'binded'}" id="unbinded">v-bind 顺序铭感, 查看元素id</div>
+            <div>
+              一个组件多个 v-model + 自定义修饰符: <input type="text" v-model="result" /> <input type="text" v-model="keyword" /> <br>
+              <CustomInput v-model:result.reverse.upperCase="result" v-model:keyword="keyword"/>
+            </div>
+            <br/>
+
+            <h2>组件style</h2>
+            <pre language="css" ref="pre-code">
+              /* 深度选择器 */
+                ::v-deep(.foo) {}
+                /* 快捷方式 */
+                :deep(.foo) {}
+
+                /* 插槽选择器 */
+                ::v-slotted(.foo) {}
+                /* shorthand */
+                :slotted(.foo) {}
+
+                /* 全局 */
+                ::v-global(.foo) {}
+                /* shorthand */
+                :global(.foo) {}
+            </pre>
+            <h2>Vue Router v4 + Transition</h2>
+            <router-link to="/12" custom v-slot="{ navigate, href, route, isActive, isExactActive}">
+              <mark @click="navigate">Go to Home</mark>
+            </router-link>
+            <router-link to="/about">Go to About</router-link>
+            <router-view v-slot="{ Component }">
+              <transition name="fade">
+                <component :is="Component" />
+              </transition>
+            </router-view>
+
+            `,
+        methods: {
+          getEvent: console.log,
+          setRefsList(el) {
+            this.refsList.push(el);
+          },
+        },
+        components: {
+          syncComponent,
+          asyncComponent,
+          CustomInput,
+        },
+        data() {
+          // 如果有mixin的data混入，只支持浅合并
+          return {
+            show: true,
+            storeArr: [],
+            refsList: [],
+            result: "",
+            keyword: "",
+          };
+        },
+        watch: {
+          storeArr: [
+            // 参数可以是数组，逐一调用
+            {
+              handler(val, oldVal) {
+                // console.log(val, oldVal);
+              },
+              deep: true,
+            },
+          ],
+        },
+        created() {
+          setTimeout(() => {
+            this.show = false;
+            this.storeArr.push(Math.floor(Math.random() * 5));
+          }, 6000);
+          this.$nextTick(() => {
+            // v-for 中的 ref 不会自动添加到 refs中
+            // console.log(this);
+          });
+        },
+        beforeUpdate() {
+          this.refsList.length = 0;
+        },
+        // setup 存放不需要响应式的值
+        setup(props) {
+          provide("canShow", false);
+
+          return {
+            title: "App 初始化完成",
+          };
+        },
+      };
+
+      const app = createApp(App);
+      // 自定义指令
+      app.directive("bg", {
+        beforeMount(el, binding, vnode) {
+          el.style.backgroundColor = binding.value;
+        },
+        mounted() {},
+        beforeUpdate() {},
+        updated() {},
+        beforeUnmount() {},
+        unmounted() {},
+      });
+      // 全局处理
+      app.config.errorHandler = (err, vm, info) => {
+        // 处理错误
+        // `info` 是 Vue 特定的错误信息，比如错误所在的生命周期钩子
+      };
+      app.config.warnHandler = function (msg, vm, trace) {
+        // `trace` 是组件的继承关系追踪
+      };
+      // vue2 的 Vue.prototype.utils = ...
+      app.config.globalProperties.utils = "全局utils";
+      // 判断是否是自定义标签
+      app.config.isCustomElement = (tag) => tag.startsWith("ion-");
+      // 自定义组件上的合并策略
+      app.config.optionMergeStrategies.hello = (parent, child, vm) => {
+        return `Hello, ${child}`; // 在组件上用 this.$options.hello 访问
+      };
+
+      console.log(Vue);
+      console.log(VueRouter);
+      console.log(Vuex);
+
+      const myRouter = createRouter({
+        history: createWebHashHistory(), // createWebHistory()
+        scrollBehavior(to, from, savedPosition) {
+          // savedPosition 历史滚动到的位置
+          return savedPosition || { top: 100, left: 0 };
+        },
+        routes: [
+          // 匹配到的所有内容放在 $route.patchMath 下 以数组的形式
+          { path: "/1:pathMatch(.*)*", component: RouterEleHome },
+          {
+            path: "/about",
+            components: {
+              // 更多参照 vue-router文档
+              // 命名视图 https://next.router.vuejs.org/zh/guide/essentials/named-views.html
+              default: RouterEleAbout,
+            },
+          },
+        ],
+      });
+
+      function createWebSocketPlugin(socket) {
+        return (store) => {
+          // 初始化store时调用
+          // socket.on("data", (data) => {
+          //   store.commit("receiveData", data);
+          // });
+          store.subscribe((mutation) => {
+            // 在每一次 mutation 之后 {type, payload}
+            if (mutation.type === "UPDATE_DATA") {
+              // socket.emit("update", mutation.payload);
+            }
+          });
+        };
+      }
+
+      const myStore = createStore({
+        // 类似redux的中间件
+        plugins: [createLogger(), createWebSocketPlugin({})],
+        strict: false, // 开启严格模式后不能直接 commit 到 mutation，必须经过dispatch。表单元素也会收到影响，解决方法 https://next.vuex.vuejs.org/guide/forms.html#two-way-computed-property
+        state() {
+          return {
+            userInfo: { level: 10 },
+          };
+        },
+      });
+      app.use(myRouter);
+      app.use(myStore);
+
+      myRouter.isReady().then(() => {
+        app.mount("#app");
+      });
+    </script>
+  </body>
+</html>
